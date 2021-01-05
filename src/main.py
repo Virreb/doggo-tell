@@ -1,24 +1,46 @@
+from src.constants import SAMPLING_RATE, NOT_FEATURE_COLUMNS, FEATURE_VECTOR_LENGTH, MAX_FRAMES, NBR_WORKERS, FOLDERS
+import sounddevice as sd
+from xgboost import DMatrix, XGBClassifier
+import xgboost as xgb
+from src.dataset import create_audio_features
+import librosa
+import numpy as np
 import pandas as pd
-from src.constants import FOLDERS
-from src.models import train_xgboost
-from src.dataset import create_features, train_test_split
-# train_test_split(test_ratio=0.2)
+import pickle
 
-# train_df = create_features(data_slice="train", augment_loudness=True)
-# test_df = create_features(data_slice="test", augment_loudness=False)
+# bst = XGBClassifier(n_jobs=NBR_WORKERS).load_model("artifacts/xgboost.model")
 
-train_df = pd.read_pickle("data/train/df.pkl")
-test_df = pd.read_pickle("data/test/df.pkl")
+bst = pickle.load(open("artifacts/xgboost.model", "rb"))
+# bst = xgb.Booster({"nthread": NBR_WORKERS})
+# bst.load_model("artifacts/xgboost.model")
 
-# print(train_df.sort_values(by="nbr_frames", ascending=False).head())
+seconds = 2  # Duration of recording
 
-y_train = train_df["target"]
-y_test = test_df["target"]  # .values()
+while True:
+    print("\nRecording")
+    rec = sd.rec(frames=int(seconds * SAMPLING_RATE), samplerate=SAMPLING_RATE, channels=1, device=1)
+    # rec = sd.rec(frames=MAX_FRAMES, samplerate=SAMPLING_RATE, channels=2, device=1)
+    sd.wait()  # Wait until recording is finished
+    rec = rec.flatten()
+    rec = librosa.to_mono(rec)
+    # sd.play(rec, samplerate=SAMPLING_RATE)
+    # sd.wait()
+    features = create_audio_features(rec)
 
-cols_to_drop_for_training = ["nbr_frames", "used_rate", "file_rate", "file_path", "target"]
-x_train = train_df.drop(columns=cols_to_drop_for_training)  # .values()
-x_test = test_df.drop(columns=cols_to_drop_for_training)  # .values()
+    # for key in NOT_FEATURE_COLUMNS:
+    #     if key in features:
+    #         features.pop(key)
 
-train_xgboost(x_train, x_test, y_train, y_test)
+    # x = np.fromiter(features.values(), dtype=float)
+    df = pd.DataFrame([features])
+    x = df.drop(columns=[col for col in NOT_FEATURE_COLUMNS if col in df.columns])
 
-# print(train_df.head())
+    # x = x.reshape(1, x.shape[0])
+    # dpred = DMatrix(data=x)
+    pred = bst.predict(x)
+    probas = bst.predict_proba(x).flatten()
+    [print(f"{FOLDERS[idx]}: {round(prob, 3)}") for idx, prob in zip(bst.classes_, probas)]
+
+# sd.play(rec, samplerate=SAMPLING_RATE, device=4)  # 4 arctis, 5 speakers
+# sd.wait()
+# sd.stop()
