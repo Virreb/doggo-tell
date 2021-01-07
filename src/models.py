@@ -37,7 +37,7 @@ if __name__ == "__main__":
 
     import pandas as pd
 
-    train_test_split(test_ratio=0.2)
+    # train_test_split(test_ratio=0.2)
 
     train_df = create_features(data_slice="train", augment_loudness=True)
     test_df = create_features(data_slice="test", augment_loudness=False)
